@@ -26,9 +26,21 @@ class Solucao:
         self.fitness = 0  # Atributo fitness (confiabilidade da rede)
 
     def adicionar_aresta(self, aresta, prob_falha):
+
         self.conexoes.arestas.append(aresta)
         self.conexoes.probabilidade_falhas_arestas[aresta] = prob_falha
         self.fitness = self.calcular_fitness()  # Recalcula a fitness após adicionar a aresta
+
+    def remover_arestas(self, arestas_remover):
+        # Filtra as arestas que não devem ser removidas
+        self.conexoes.arestas = [aresta for aresta in self.conexoes.arestas if aresta not in arestas_remover]
+
+        # Também remove as probabilidades de falha associadas às arestas removidas
+        for aresta in arestas_remover:
+            if aresta in self.conexoes.probabilidade_falhas_arestas:
+                del self.conexoes.probabilidade_falhas_arestas[aresta]
+
+        self.fitness = self.calcular_fitness()  # Recalcula a fitness após a remoção das arestas
 
     def calcular_fitness(self, num_simulations = 1000):
         graph = nx.Graph()
@@ -113,11 +125,13 @@ class Solucao:
 
 class Metaheuristica:
     def __init__(self):
-        self.nos = []  # Lista de nós
+        self.nos = []
         self.num_generations = 100  # Número de gerações
         self.population_size = 1  # Tamanho da população (número de redes)
         self.mutation_rate = 0.1  # Taxa de mutação
         self.solucoes = []  # Lista para armazenar as soluções geradas
+        plt.ion()
+        self.fig, self.ax = plt.subplots()
 
     def ler_csv(self, arquivo_csv):
         """ Lê os dados de um arquivo CSV e cria os objetos 'No' """
@@ -183,14 +197,58 @@ class Metaheuristica:
         nx.draw(G, pos, with_labels=True, node_color='skyblue', node_size=2000, font_size=12, font_weight='bold', edge_color='gray')
         plt.title(title)
         plt.show()
+    
+    def select_parents(self, population, fitness_scores):
+        selected = random.choices(population, weights=fitness_scores, k=2)
+        return selected[0], selected[1]
+    
+    def crossover(self, parent1, parent2):
+        return parent1 if np.random.rand() < 0.5 else parent2
+    
+    def mutate(self, individual, mutation_rate):
+        if random.random() < mutation_rate:
+            if len(individual.nos) > 0 and random.random() < 0.5:
+                # Remove a random edge
+                aresta_a_ser_removida = random.choice(list(individual.conexoes.arestas))
+                individual.remover_arestas([aresta_a_ser_removida])
+            else:
+                # Adiciona uma aresta aleatória
+                possible_edges = set(itertools.combinations(range(len(individual.nos)), 2)) - set(individual.conexoes.arestas)
+                if possible_edges:
+                    edge_to_add = random.choice(list(possible_edges))
+                    prob_falha = random.uniform(0.5, 1)  # Probabilidade de falha aleatória entre 0 e 1
+                    individual.adicionar_aresta(edge_to_add, prob_falha)
+        return individual
+
 
     def evolve(self):
         """ Evolui a população usando crossover, mutação e seleção """
         population = self.initialize_population()
+        best_individual = None
+        best_fitness = 0
         
-        # Plotando as soluções iniciais geradas
-        for i, solucao in enumerate(self.solucoes):
-            self.plot_graph(solucao, title=f"Solução Inicial {i+1}")
+        for generation in range(self.num_generations):
+            fitness_scores = [solucao.fitness for solucao in self.solucoes]
+            new_population = []
+            max_fitness = max(fitness_scores)
+            if max_fitness > best_fitness:
+                best_fitness = max_fitness
+                best_individual = self.solucoes[np.argmax(fitness_scores)]
+                print(best_individual)
+                self.plot_graph(best_individual)
+            
+            print(f"Generation {generation+1}: Best Fitness = {best_fitness:.4f}")
+
+            while len(new_population) < self.population_size:
+                parent1, parent2 = self.select_parents(population, fitness_scores)
+                child = self.crossover(parent1, parent2)
+                child = self.mutate(child, self.mutation_rate)
+                new_population.append(child)
+
+            population = new_population
+
+        return best_individual, best_fitness
+
 
         # for generation in range(self.num_generations):
         #     population.sort(key=lambda x: x.fitness, reverse=True)  # Ordena pela fitness
@@ -212,10 +270,21 @@ class Metaheuristica:
         best_solution = max(population, key=lambda x: x.fitness)
         return best_solution
 
+    def plot_graph(self, individual):
+        self.ax.clear()
+        posicao_nos = [(no.coordenada.x, no.coordenada.y) for no in individual.nos]
+        print(posicao_nos)
+        # Plotando o grafo
+        G = nx.Graph()
+        G.add_edges_from(individual.conexoes.arestas)
+        nx.draw(G, posicao_nos, with_labels=True, ax=ax, node_color='lightblue', edge_color='gray', node_size=700, font_weight='bold')
+        plt.draw()
+        plt.pause(0.1)
 
 # Exemplo de uso
 metaheuristica = Metaheuristica()
-
+plt.ion()
+fig, ax = plt.subplots()
 # Chame a função para ler os dados do arquivo CSV
 metaheuristica.ler_csv('nodes.csv')  # Substitua 'dados_nos.csv' pelo caminho do seu arquivo CSV
 
@@ -223,11 +292,11 @@ metaheuristica.ler_csv('nodes.csv')  # Substitua 'dados_nos.csv' pelo caminho do
 best_network = metaheuristica.evolve()
 
 # Imprima as soluções geradas para verificar
-print("\nSoluções geradas:")
-for i, solucao in enumerate(metaheuristica.solucoes):
-    print(f"Solução {i + 1}:")
-    print(f"Arestas: {solucao.conexoes.arestas}")
-    print(f"Probabilidade de falhas das arestas: {solucao.conexoes.probabilidade_falhas_arestas}")
-    print(f"Fitness (Confiabilidade): {solucao.fitness}")
-    print(f"Conectada? {solucao.is_connected()}")
-    print(f"Arestas críticas: {solucao.find_critical_edges()}")
+# print("\nSoluções geradas:")
+# for i, solucao in enumerate(metaheuristica.solucoes):
+#     print(f"Solução {i + 1}:")
+#     print(f"Arestas: {solucao.conexoes.arestas}")
+#     print(f"Probabilidade de falhas das arestas: {solucao.conexoes.probabilidade_falhas_arestas}")
+#     print(f"Fitness (Confiabilidade): {solucao.fitness}")
+#     print(f"Conectada? {solucao.is_connected()}")
+#     print(f"Arestas críticas: {solucao.find_critical_edges()}")
