@@ -59,6 +59,28 @@ def simulate_connectivity(graph, edge_reliabilities, num_simulations=10000):
     
     return connected_count / num_simulations
 
+# def generate_random_graph(num_nodes, max_edges):
+#     while True:
+#         G = nx.Graph()
+#         G.add_nodes_from(range(num_nodes))
+
+#         # Cria uma árvore geradora (conectada) usando o algoritmo de Kruskal
+#         # Conectando todos os nós de forma que a rede seja conectada
+#         edges = list(nx.generators.random_graphs.fast_gnp_random_graph(num_nodes, 0.5).edges())
+#         G.add_edges_from(edges[:num_nodes - 1])  # Garantindo a conectividade inicial
+
+#         # Se o número de arestas for menor que o máximo desejado, adicione arestas aleatórias
+#         possible_edges = list(set(nx.complete_graph(num_nodes).edges()) - set(G.edges()))  # Converter em lista
+#         additional_edges = random.sample(possible_edges, min(max_edges - len(G.edges()), len(possible_edges)))
+#         G.add_edges_from(additional_edges)
+
+#         # Verifica se o grafo é conectado
+#         if nx.is_connected(G):
+#             return G
+#         else:
+#             # Se não for conectado, gera novamente
+#             continue
+
 def generate_random_graph(num_nodes, max_edges):
     G = nx.Graph()
     
@@ -125,6 +147,11 @@ def genetic_algorithm(edge_reliabilities, population_size, generations, mutation
 
         print(f"Generation {generation+1}: Pareto Front size = {len(pareto_front)}")
 
+        # Verifica se há pais suficientes para a seleção
+        if len(pareto_front) < 2:
+            print("Não há pais suficientes na fronteira de Pareto. Pulando geração.")
+            continue  # Pula a geração atual, se não houver pais suficientes
+
         # Gerar nova população
         while len(new_population) < population_size:
             parent1, parent2 = select_parents(population, pareto_front)
@@ -134,8 +161,8 @@ def genetic_algorithm(edge_reliabilities, population_size, generations, mutation
 
         population = new_population
 
-    #result = (pareto_front)
     return pareto_front
+
 
 def plot_graph(individual):
     ax.clear()
@@ -188,10 +215,10 @@ edge_reliabilities = {
     (i, j): np.random.uniform(0.9, 0.95) for i in range(28) for j in range(28)
 }
 
-population_size = 10
-generations = 5
+population_size = 100
+generations = 30
 mutation_rate = 0.1
-num_simulations = 500
+num_simulations = 700
 
 # Rodar o algoritmo genético
 pareto_front = genetic_algorithm(edge_reliabilities, population_size, generations, mutation_rate, num_simulations)
@@ -205,9 +232,82 @@ for solution in pareto_front:
 plt.ioff()
 plt.show()
 
+def remove_dominadas(solucoes):
+    solucao_nao_dominada = []
 
+    for sol1 in solucoes:
+        # Verifica se a solução já é dominada por alguma solução existente na resposta
+        dominada = False
+        for sol2 in solucao_nao_dominada:
+            # Calcula a confiabilidade e o custo das duas soluções
+            fitness1 = fitness(sol1)
+            fitness2 = fitness(sol2)
+            
+            confiabilidade1, custo1 = fitness1
+            confiabilidade2, custo2 = fitness2
+
+            # Comparação direta de confiabilidade e custo
+            if (confiabilidade2 >= confiabilidade1 and custo2 <= custo1):
+                # Solução 2 domina a solução 1
+                dominada = True
+                break
+
+        if not dominada:
+            solucao_nao_dominada.append(sol1)
+
+    return solucao_nao_dominada
+
+costs = []
 for i, individual in enumerate(pareto_front):
+    individual.edges()
     reliability, cost = fitness(individual)  # Obter os valores de fitness (confiabilidade e custo)
-    print(f"Indivíduo {i+1}: Confiabilidade = {reliability}, Custo = {-cost}")
+    costs.append([reliability, cost])
+    print(f"Indivíduo {i+1}: Confiabilidade = {reliability}, Custo = {cost}")
 
-plot_pareto_front(pareto_front)
+
+costs = np.array(costs)
+
+# Função para verificar a fronteira de Pareto
+def is_pareto_front(costs):
+    n_observations = costs.shape[0]
+    on_front = np.ones(n_observations, dtype=bool)
+    
+    for i in range(n_observations):
+        for j in range(n_observations):
+            if np.all(costs[j] <= costs[i]) and np.any(costs[j] < costs[i]):
+                on_front[i] = False
+                break
+    return on_front
+
+# Determinando a fronteira de Pareto
+pareto_front_status = is_pareto_front(costs)
+pareto_solutions = costs[pareto_front_status]
+sorted_pareto_solutions = pareto_solutions[np.argsort(pareto_solutions[:, 0])]  # Ordenando por confiabilidade
+
+
+# Plotando os resultados
+plt.figure(figsize=(8, 6))
+plt.scatter(costs[~pareto_front_status, 0], costs[~pareto_front_status, 1], color='red', label='Soluções Dominadas')
+plt.scatter(costs[pareto_front_status, 0], costs[pareto_front_status, 1], color='green', label='Fronteira de Pareto')
+# Adicionando a linha conectando as soluções não dominadas
+plt.plot(sorted_pareto_solutions[:, 0], sorted_pareto_solutions[:, 1], color='blue', linestyle='-', linewidth=2, label='Conexão das Soluções')
+
+
+# Exibir as soluções não dominadas (fronteira de Pareto) e as conexões (arestas) entre os nós
+print("\nPareto Front Solutions and Connections (Arestas):")
+for i, solution in enumerate(pareto_front):
+    # Obter as arestas de cada solução (grafo)
+    edges = list(solution.edges())
+    
+    # Imprimir a solução e suas arestas
+    print(f"Solution {i+1}:")
+    print(f"Arestas (Conexões entre os nós): {edges}")
+    plot_graph(solution)
+
+
+plt.ylabel('Custo')
+plt.xlabel('Confiabilidade')
+plt.title('Fronteira de Pareto - Custo vs Confiabilidade')
+plt.legend(loc='best')
+plt.grid(True)
+plt.show()
