@@ -4,7 +4,7 @@ import random
 import matplotlib.pyplot as plt
 
 # Simulate connectivity function (same as earlier)
-def fitness(graph, edge_reliabilities, num_simulations=10000):
+def simulate_connectivity(graph, edge_reliabilities, num_simulations=10000):
     connected_count = 0
     
     for _ in range(num_simulations):
@@ -41,7 +41,7 @@ def genetic_algorithm(edge_reliabilities, population_size, generations, mutation
 
     # Fitness function
     def fitness(individual):
-        return fitness(individual, edge_reliabilities, num_simulations)
+        return simulate_connectivity(individual, edge_reliabilities, num_simulations)
 
     # Selection
     def select_parents(population, fitness_scores):
@@ -50,21 +50,27 @@ def genetic_algorithm(edge_reliabilities, population_size, generations, mutation
 
     # Crossover
     def crossover(parent1, parent2):
-        return parent1 if np.random.rand() < 0.5 else parent2
+        children = children_base.copy()
+        max_edges = max(len(parent1.edges()), len(parent2.edges()))
+
+        for i in range(max_edges):
+            if random.random() < 0.5:
+                if i < len(parent1.edges()):
+                    children.add_edge(*list(parent1.edges())[i])
+            else:
+                if i < len(parent2.edges()):
+                    children.add_edge(*list(parent2.edges())[i])
+
+        return children
 
     # Mutation
     def mutate(individual):
         if random.random() < mutation_rate:
-            if len(individual.edges()) > 0 and random.random() < 0.5:
-                # Remove a random edge
-                edge_to_remove = random.choice(list(individual.edges()))
-                individual.remove_edge(*edge_to_remove)
-            else:
-                # Add a random edge
-                possible_edges = set(nx.complete_graph(individual.nodes()).edges()) - set(individual.edges())
-                if possible_edges:
-                    edge_to_add = random.choice(list(possible_edges))
-                    individual.add_edge(*edge_to_add)
+            possible_edges = set(nx.complete_graph(individual.nodes()).edges()) - set(individual.edges())
+            if possible_edges:
+                edge_to_add = random.choice(list(possible_edges))
+                individual.add_edge(*edge_to_add)
+                    
         return individual
 
     # Genetic Algorithm Main Loop
@@ -128,8 +134,11 @@ edge_reliabilities = {
     (i, j): np.random.uniform(0.8, 0.95) for i in range(10) for j in range(10)
 }
 
-population_size = 50
-generations = 50
+children_base = nx.Graph()
+children_base.add_nodes_from(range(10))
+
+population_size = 100
+generations = 100
 mutation_rate = 0.1
 num_simulations = 500
 
